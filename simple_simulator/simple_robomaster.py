@@ -29,6 +29,7 @@ class RoboMaster(SimulatedRobotBase):
 
         self.lateral_velocity_world = np.zeros(3)
         self.angular_velocity_world = 0.0
+        self.current_wheelspeed = WheelSpeed()
 
         self.velocity_body = Twist()
         self.velocity_subscription = self.node.create_subscription(
@@ -42,6 +43,14 @@ class RoboMaster(SimulatedRobotBase):
             f"/{self.uuid}/cmd_wheels",
             self.wheelspeed_callback,
             qos_profile=qos_profile_sensor_data,
+        )
+        self.wheelspeed_publisher = self.node.create_publisher(
+            WheelSpeed,
+            f"/{self.uuid}/enc",
+            qos_profile=qos_profile_sensor_data,
+        )
+        self.wheelspeed_pub_timer = self.node.create_timer(
+            1.0 / 10, self.timer_wheelspeed
         )
 
         len_xy = self.ROBOT_HALF_BASE_LEN_X + self.ROBOT_HALF_BASE_LEN_Y
@@ -57,12 +66,19 @@ class RoboMaster(SimulatedRobotBase):
             * self.ROBOT_WHEEL_RADIUS
         )
 
+    def timer_wheelspeed(self):
+        self.wheelspeed_publisher.publish(self.current_wheelspeed)
+
     def wheelspeed_callback(self, wheels):
         self.reset_watchdog()
 
         ws_rpm = np.array([wheels.fl, wheels.fr, wheels.rr, wheels.rl])
         ws_rpm[np.abs(ws_rpm) < 13] = 0.0  # Robot RPM dead band
         ws = ws_rpm / 60 * 2 * np.pi
+
+        self.current_wheelspeed = WheelSpeed(
+            fl=int(ws_rpm[0]), fr=int(ws_rpm[1]), rr=int(ws_rpm[2]), rl=int(ws_rpm[3])
+        )
 
         rot_inv = self.orientation.as_matrix().transpose()
         v = rot_inv @ self.dyn_inv @ ws
